@@ -45,8 +45,7 @@ public class Agent extends Thread implements BoardObject {
     @Override
     public void run() {
         while (true) {
-            // Si se ha recogido una muestra y se tiene definida la posición de la MotherShip,
-            // calcular y seguir la ruta A* hacia la nave
+            // Si se tiene sample y se conoce la MotherShip, sigue la ruta A* para regresar
             if (sampleCollected && posMotherShip != null) {
                 List<int[]> path = aStarPath(pos, posMotherShip);
                 if (path != null && !path.isEmpty()) {
@@ -59,10 +58,44 @@ public class Agent extends Thread implements BoardObject {
                         }
                     }
                 }
-                // Al llegar a la nave, se reinicia la bandera y se puede agregar alguna acción adicional
+                // Al llegar a la MotherShip, se reinicia el modo sample
                 sampleCollected = false;
             } else {
-                // Movimiento aleatorio: se elige aleatoriamente una celda adyacente válida
+                // Primero, si no se tiene sample, se revisa el sensor de migajas en celdas adyacentes
+                if (!sampleCollected) {
+                    List<int[]> migajaCells = new ArrayList<>();
+                    for (int i = 0; i < 4; i++) {
+                        int newRow = pos[0] + dirRow[i];
+                        int newCol = pos[1] + dirCol[i];
+                        if (inBounds(newRow, newCol)) {
+                            if (board[newRow][newCol].getObject() instanceof Migaja) {
+                                migajaCells.add(new int[]{newRow, newCol});
+                            }
+                        }
+                    }
+                    if (!migajaCells.isEmpty()) {
+                        int[] targetCell = migajaCells.get(0);
+                        // Si hay más de una migaja, se escoge la celda cuya distancia a la MotherShip sea mayor
+                        if (migajaCells.size() > 1 && posMotherShip != null) {
+                            int maxDistance = -1;
+                            for (int[] cell : migajaCells) {
+                                int distance = Math.abs(cell[0] - posMotherShip[0]) + Math.abs(cell[1] - posMotherShip[1]);
+                                if (distance > maxDistance) {
+                                    maxDistance = distance;
+                                    targetCell = cell;
+                                }
+                            }
+                        }
+                        updatePosition(targetCell[0], targetCell[1]);
+                        try {
+                            Thread.sleep(100 + speed);
+                        } catch (InterruptedException e) {
+                            e.printStackTrace();
+                        }
+                        continue; // continúa el bucle sin hacer movimiento aleatorio
+                    }
+                }
+                // Si no se detecta migaja, se procede con el movimiento aleatorio
                 List<int[]> neighbors = new ArrayList<>();
                 for (int i = 0; i < 4; i++) {
                     int newRow = pos[0] + dirRow[i];
@@ -93,36 +126,40 @@ public class Agent extends Thread implements BoardObject {
 
         Square target = board[x][y];
 
-        // Evita mover al agente si la celda destino está ocupada por otro agente
-        if (target.getObject() instanceof Agent) {
+        // Evita moverse a una celda ocupada por otro agente
+        if (target.getObject() instanceof Agent || target.getObject() instanceof MotherShip || target.getObject() instanceof Obstacle) {
             return;
         }
 
-        // Si la celda destino contiene una Sample, recoge la muestra y activa el modo regreso
+        // Si la celda destino contiene una Sample, se recoge la muestra y se activa el modo regreso
         if (target.getObject() instanceof Sample) {
             target.minusOneFlower();
             sampleCollected = true;
             return;
         }
 
-        // Si el destino es la MotherShip y se está regresando, resetea el modo regreso
+        // Si se está regresando y se llega a la MotherShip, se reinicia la bandera
         if (target.getObject() instanceof MotherShip && sampleCollected) {
             sampleCollected = false;
             return;
         }
 
-        // Si el destino es la MotherShip sin regresar, no se mueve
-        if (target.getObject() instanceof MotherShip) {
-            return;
-        }
 
-        // Antes de moverse, si se está regresando, deja una migaja en la celda de origen
+        // Antes de moverse, en la celda de origen se deja (o se actualiza) una migaja si se sigue el rastro;
+        // además, si la celda ya tiene 2 migajas, se reduce a 1 utilizando minusOneMigajas()
         Square origin = board[pos[0]][pos[1]];
-        if(sampleCollected) {
+        if (sampleCollected) {
             origin.setObject(new Migaja(2));
         } else {
+            // En modo regreso, se limpia la celda de origen
             origin.eraseObject();
             origin.setObject(currentObject);
+        }
+
+        // Si el destino es una celda con migaja y el agente no tiene sample,
+        // y la migaja tiene 2 unidades, se reduce a 1
+        if (!sampleCollected && target.getObject() instanceof Migaja) {
+            target.minusOneMigajas();
         }
 
         // Actualiza la posición del agente
@@ -133,53 +170,88 @@ public class Agent extends Thread implements BoardObject {
         System.out.println(name + " -> Row: " + pos[0] + " Col: " + pos[1]);
     }
 
-
     // Implementación del algoritmo A* para encontrar la ruta desde start hasta goal
     private List<int[]> aStarPath(int[] start, int[] goal) {
         int n = board.length;
-        boolean[][] closed = new boolean[n][n];
-        Node[][] nodes = new Node[n][n];
 
+        // Estructuras para nodos abiertos y cerrados
         PriorityQueue<Node> open = new PriorityQueue<>(Comparator.comparingInt(nod -> nod.f));
+        Map<String, Node> openMap = new HashMap<>();
+        Map<String, Node> closedMap = new HashMap<>();
 
-        Node startNode = new Node(start[0], start[1], null, 0,
-                heuristic(start[0], start[1], goal[0], goal[1]));
-        nodes[start[0]][start[1]] = startNode;
+        String startKey = start[0] + "," + start[1];
+        Node startNode = new Node(start[0], start[1], null, 0, heuristic(start[0], start[1], goal[0], goal[1]));
         open.add(startNode);
+        openMap.put(startKey, startNode);
 
         while (!open.isEmpty()) {
             Node current = open.poll();
+            String currentKey = current.row + "," + current.col;
+            openMap.remove(currentKey);
+
+            // Si llegamos a la meta, reconstruimos el camino
             if (current.row == goal[0] && current.col == goal[1]) {
                 return reconstructPath(current);
             }
-            closed[current.row][current.col] = true;
+
+            // Movemos el nodo actual a cerrados
+            closedMap.put(currentKey, current);
+
+            // Expandir vecinos (movimientos en 4 direcciones)
             for (int i = 0; i < 4; i++) {
                 int newRow = current.row + dirRow[i];
                 int newCol = current.col + dirCol[i];
+
+                // Verificar límites del tablero
                 if (newRow < 0 || newRow >= n || newCol < 0 || newCol >= n)
                     continue;
-                if (closed[newRow][newCol])
-                    continue;
+
+                String neighborKey = newRow + "," + newCol;
                 int tentativeG = current.g + 1;
-                Node neighbor = nodes[newRow][newCol];
-                if (neighbor == null) {
-                    neighbor = new Node(newRow, newCol, current, tentativeG,
-                            heuristic(newRow, newCol, goal[0], goal[1]));
-                    nodes[newRow][newCol] = neighbor;
-                    open.add(neighbor);
-                } else if (tentativeG < neighbor.g) {
-                    neighbor.g = tentativeG;
-                    neighbor.f = neighbor.g + neighbor.h;
-                    neighbor.parent = current;
-                    // Debido a que PriorityQueue no reordena automáticamente,
-                    // se vuelve a agregar el nodo
-                    open.remove(neighbor);
-                    open.add(neighbor);
+                int h = heuristic(newRow, newCol, goal[0], goal[1]);
+                int tentativeF = tentativeG + h;
+
+                Node neighbor = new Node(newRow, newCol, current, tentativeG, h);
+
+                // Si el vecino ya está en abiertos
+                if (openMap.containsKey(neighborKey)) {
+                    Node existing = openMap.get(neighborKey);
+                    if (tentativeF < existing.f) {
+                        // Mejor ruta encontrada: actualizar
+                        existing.g = tentativeG;
+                        existing.f = tentativeF;
+                        existing.parent = current;
+                        // Para reordenar en la cola: se remueve y se vuelve a agregar
+                        open.remove(existing);
+                        open.add(existing);
+                    }
+                    // Si no es mejor, se descarta
+                    continue;
                 }
+
+                // Si el vecino ya está en cerrados
+                if (closedMap.containsKey(neighborKey)) {
+                    Node existing = closedMap.get(neighborKey);
+                    if (tentativeF < existing.f) {
+                        // Se mejora la ruta: se remueve de cerrados y se agrega a abiertos
+                        closedMap.remove(neighborKey);
+                        open.add(neighbor);
+                        openMap.put(neighborKey, neighbor);
+                    }
+                    // Si no es mejor, se descarta
+                    continue;
+                }
+
+                // Si no se encuentra en ninguna de las estructuras, se agrega a abiertos
+                open.add(neighbor);
+                openMap.put(neighborKey, neighbor);
             }
         }
-        return null; // no se encontró ruta
+
+        // Si se vacía la lista de abiertos sin encontrar la meta, se retorna null
+        return null;
     }
+
 
     private int heuristic(int r, int c, int goalR, int goalC) {
         return Math.abs(r - goalR) + Math.abs(c - goalC);
@@ -193,6 +265,7 @@ public class Agent extends Thread implements BoardObject {
         }
         return path;
     }
+
 
     // Clase interna para representar un nodo en A*
     private class Node {
