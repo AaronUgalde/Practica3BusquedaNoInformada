@@ -6,8 +6,8 @@ import java.util.Objects;
 
 public class Migaja implements BoardObject{
 
-    public ImageIcon dosMigajas = new ImageIcon(new ImageIcon(Objects.requireNonNull(getClass().getResource("migajas2.png"))).getImage().getScaledInstance(50, 50, Image.SCALE_SMOOTH));
-    public ImageIcon unaMigaja = new ImageIcon(new ImageIcon(Objects.requireNonNull(getClass().getResource("migajas1.png"))).getImage().getScaledInstance(50, 50, Image.SCALE_SMOOTH));
+    public ImageIcon dosMigajas = new ImageIcon(new ImageIcon(Objects.requireNonNull(getClass().getResource("/migajas2.png"))).getImage().getScaledInstance(50, 50, Image.SCALE_SMOOTH));
+    public ImageIcon unaMigaja = new ImageIcon(new ImageIcon(Objects.requireNonNull(getClass().getResource("/migajas1.png"))).getImage().getScaledInstance(50, 50, Image.SCALE_SMOOTH));
     public ImageIcon currentImage;
     public int numMigajas;
 
@@ -26,6 +26,6 @@ public class Migaja implements BoardObject{
 
     @Override
     public ImageIcon getIcon() {
-        return null;
+        return currentImage;
     }
 }

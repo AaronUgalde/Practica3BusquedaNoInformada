@@ -30,8 +30,15 @@ public class Square extends JLabel {
     }
 
     public void setObject(BoardObject object) {
-        this.object = object;
-        this.setIcon(object.getIcon());
+        if(object == null){
+            this.object = null;
+            this.setIcon(null);
+        }else {
+            this.object = object;
+            this.setIcon(object.getIcon());
+        }
+        revalidate();
+        repaint();
     }
 
     public void minusOneFlower(){
