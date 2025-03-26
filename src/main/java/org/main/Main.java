@@ -15,7 +15,7 @@ public class Main {
     {
         // TODO code application logic here
 
-        Scenario e = new Scenario(15);
+        Scenario e = new Scenario(10);
         e.setVisible(true);
     }
 

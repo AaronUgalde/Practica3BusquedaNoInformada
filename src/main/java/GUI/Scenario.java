@@ -75,8 +75,8 @@ public class Scenario extends JFrame {
         addWindowListener(new MyWindowAdapter());
 
         // Crea 2 agentes
-        agent1 = new Agent("bee1", "/bee1.png", board, 50);
-        agent2 = new Agent("bee2", "/bee1.png", board, 50);
+        agent1 = new Agent("bee1", "/bee1.png", board, 40);
+        agent2 = new Agent("bee2", "/bee1.png", board, 40);
     }
 
     public void setMotherShip(int[] pos) {

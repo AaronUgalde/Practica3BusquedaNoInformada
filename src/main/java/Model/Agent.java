@@ -126,6 +126,19 @@ public class Agent extends Thread implements BoardObject {
 
         Square target = board[x][y];
 
+
+        //Si voy de regreso y hay otro agente en mi camino, entonces espera a que el otro agente se mueva de lugar
+        if(sampleCollected && target.getObject() instanceof Agent) {
+            while (target.getObject() instanceof Agent) {
+                try {
+                    sleep(100 + speed);
+                } catch (InterruptedException ex) {
+                    ex.printStackTrace(System.out);
+                }
+                target = board[x][y];
+            }
+        }
+
         // Evita moverse a una celda ocupada por otro agente
         if (target.getObject() instanceof Agent || target.getObject() instanceof MotherShip || target.getObject() instanceof Obstacle) {
             return;
@@ -160,6 +173,10 @@ public class Agent extends Thread implements BoardObject {
         // y la migaja tiene 2 unidades, se reduce a 1
         if (!sampleCollected && target.getObject() instanceof Migaja) {
             target.minusOneMigajas();
+        }
+
+        if(currentObject instanceof Agent) {
+            currentObject = null;
         }
 
         // Actualiza la posición del agente
@@ -205,6 +222,11 @@ public class Agent extends Thread implements BoardObject {
                 // Verificar límites del tablero
                 if (newRow < 0 || newRow >= n || newCol < 0 || newCol >= n)
                     continue;
+
+                BoardObject obj = board[newRow][newCol].getObject();
+                if (obj instanceof Sample || obj instanceof Obstacle) {
+                    continue;
+                }
 
                 String neighborKey = newRow + "," + newCol;
                 int tentativeG = current.g + 1;
